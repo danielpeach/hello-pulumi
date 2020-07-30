@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags:
+    - 'v*'
+
+jobs:
+  build:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v2
+
+      - name: build
+        run: ./gradlew build
+
+      - name: get project info
+        id: get_project_info
+        run: |
+          echo ::set-output name=PROJECT_KEBAB::$(basename `pwd` | sed 's/\([a-z0-9]\)\([A-Z]\)/\1_\L\2/g')
+          echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+
+      - name: build docker image
+        id: build-docker-image
+        run: |
+          docker build -t gcr.io/cloud-armory/${{ steps.get_project_info.outputs.PROJECT_KEBAB }}:${{ steps.get_project_info.outputs.VERSION }} -f ./Dockerfile .
+
+      - name: setup gcloud
+        uses: GoogleCloudPlatform/github-actions/setup-gcloud@master
+        with:
+          project_id: cloud-armory
+          service_account_key: ${{ secrets.GCP_KEY }}
+          export_default_credentials: true
+
+      - name: push image to registry
+        run: |
+          gcloud auth configure-docker -q
+          docker push gcr.io/cloud-armory/${{ steps.get_project_info.outputs.PROJECT_KEBAB }}:${{ steps.get_project_info.outputs.VERSION }}
